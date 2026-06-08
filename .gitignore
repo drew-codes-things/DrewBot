@@ -1,3 +1,15 @@
 **.env
 **node_modules
-audit.log
+audit.log__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example

@@ -52,6 +52,13 @@ function checkCooldown(userId, command) {
     return 0;
 }
 
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, last] of cooldowns) {
+        if (now - last >= COOLDOWN_MS) cooldowns.delete(key);
+    }
+}, COOLDOWN_MS);
+
 function auditLog(interaction) {
     let target = '';
     const user = interaction.options.getUser('user');
@@ -461,7 +468,7 @@ async function handleSearch(interaction) {
             await i.update({
                 embeds: [buildSearchEmbed(results[idx], idx, results.length, type)],
                 components: [navRow(idx, results.length)],
-            });
+            }).catch(() => {});
         });
         collector.on('end', () => {
             interaction

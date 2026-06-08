@@ -125,6 +125,20 @@ The `/meme` command fetches `https://www.reddit.com/r/memes/.rss?limit=25` as ra
 
 ---
 
+## Get the Code
+
+Clone with git:
+
+```bash
+git clone https://github.com/drew-codes-things/DrewBot.git
+```
+
+Or with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh repo clone drew-codes-things/DrewBot
+```
+
 ## License
 
 MIT - made by [Drew](https://github.com/drew-codes-things)
