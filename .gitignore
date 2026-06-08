@@ -1,6 +1,7 @@
 **.env
 **node_modules
-audit.log__pycache__/
+audit.log
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -13,3 +14,4 @@ node_modules/
 .env
 .env.*
 !.env.example
+
