@@ -12,6 +12,7 @@ const {
     ButtonStyle,
     PermissionFlagsBits,
     MessageFlags,
+    ChannelType,
 } = require('discord.js');
 const axios = require('axios');
 const fs = require('fs');
@@ -58,6 +59,23 @@ setInterval(() => {
         if (now - last >= COOLDOWN_MS) cooldowns.delete(key);
     }
 }, COOLDOWN_MS);
+
+const WELCOME_CONFIG_PATH = path.join(__dirname, 'welcome-config.json');
+
+function loadWelcomeConfig() {
+    try {
+        return JSON.parse(fs.readFileSync(WELCOME_CONFIG_PATH, 'utf8'));
+    } catch (err) {
+        if (err.code !== 'ENOENT') console.error('[welcome][error] could not read welcome-config.json:', err.message);
+        return {};
+    }
+}
+
+function setWelcomeChannel(guildId, channelId) {
+    const cfg = loadWelcomeConfig();
+    cfg[guildId] = channelId;
+    fs.writeFileSync(WELCOME_CONFIG_PATH, JSON.stringify(cfg, null, 2));
+}
 
 function auditLog(interaction) {
     let target = '';
@@ -169,6 +187,13 @@ const commands = [
         .addStringOption(o => o.setName('messagelink').setDescription('Link to the message').setRequired(true))
         .addStringOption(o => o.setName('title').setDescription('New title').setRequired(false))
         .addStringOption(o => o.setName('description').setDescription('New description').setRequired(false)),
+
+    new SlashCommandBuilder()
+        .setName('welcomechannel')
+        .setDescription('Set the channel where new member welcome messages are posted')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addChannelOption(o => o.setName('channel').setDescription('Channel to post welcome messages in')
+            .addChannelTypes(ChannelType.GuildText).setRequired(true)),
 ].map(c => c.toJSON());
 
 const embed = (title) =>
@@ -365,6 +390,7 @@ async function handleHelp(interaction) {
             { name: 'General', value: '`/ping` `/help` `/search` `/profile` `/serverinfo` `/meme`' },
             { name: 'Moderation', value: '`/ban` `/unban` `/kick` `/mute` `/unmute` `/restrict` `/unrestrict` `/purge` `/massunban`' },
             { name: 'Embeds', value: '`/embedcreate` `/embededit`' },
+            { name: 'Welcome', value: '`/welcomechannel`' },
         );
     await interaction.reply({ embeds: [e] });
 }
@@ -665,6 +691,17 @@ async function handleEmbedEdit(interaction) {
 }
 
 
+async function handleWelcomeChannel(interaction) {
+    const channel = interaction.options.getChannel('channel');
+    try {
+        setWelcomeChannel(interaction.guildId, channel.id);
+        await interaction.reply(ephemeral(`Welcome messages will now be posted in ${channel}.`));
+    } catch (err) {
+        console.error('[welcomechannel][error]', err.message);
+        await interaction.reply(ephemeral('Failed to save the welcome channel.'));
+    }
+}
+
 const HANDLERS = {
     ping: handlePing,
     help: handleHelp,
@@ -683,7 +720,23 @@ const HANDLERS = {
     massunban: handleMassUnban,
     embedcreate: handleEmbedCreate,
     embededit: handleEmbedEdit,
+    welcomechannel: handleWelcomeChannel,
 };
+
+client.on('guildMemberAdd', async member => {
+    const channelId = loadWelcomeConfig()[member.guild.id];
+    if (!channelId) return;
+    try {
+        const channel = await member.guild.channels.fetch(channelId);
+        if (!channel?.isTextBased()) return;
+        const e = embed('Welcome!')
+            .setDescription(`${member} just joined **${member.guild.name}**. Welcome aboard!`)
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }));
+        await channel.send({ embeds: [e] });
+    } catch (err) {
+        console.error('[welcome][error]', err.message);
+    }
+});
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;

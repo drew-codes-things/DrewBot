@@ -54,6 +54,14 @@ All moderation commands require the matching Discord permission on the invoking 
 | `/embedcreate <channel> <title> <description>` | Manage Messages | Sends a new embed to the specified channel |
 | `/embededit <messagelink> [title] [description]` | Manage Messages | Edits an existing bot embed by Discord message link. Validates the link domain before fetching |
 
+### Welcome
+
+| Command | Permission required | Description |
+|---|---|---|
+| `/welcomechannel <channel>` | Manage Messages | Sets the channel where new-member welcome messages are posted |
+
+When a new member joins a server with a welcome channel configured, DrewBot posts an embed mentioning them there. The channel choice is stored per-guild in `welcome-config.json` (not committed to git).
+
 ---
 
 ## Setup
