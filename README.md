@@ -62,6 +62,16 @@ All moderation commands require the matching Discord permission on the invoking 
 
 When a new member joins a server with a welcome channel configured, DrewBot posts an embed mentioning them there. The channel choice is stored per-guild in `welcome-config.json` (not committed to git).
 
+### Reaction Roles
+
+| Command | Permission required | Description |
+|---|---|---|
+| `/reactionrolecreate <channel> <title> <description>` | Manage Roles | Posts a reaction role panel embed (no buttons yet) and replies with its message link |
+| `/reactionroleadd <messagelink> <role> <label>` | Manage Roles | Adds a button for the given role to an existing panel. Fails if the role is `@everyone`, a managed integration role, or above the bot's highest role. A panel supports up to 25 role buttons (5 rows of 5) |
+| `/reactionroleremove <messagelink> <role>` | Manage Roles | Removes a role's button from an existing panel |
+
+Members click a role's button to receive it, and click it again to remove it - a toggle, same as classic emoji reaction roles but using Discord buttons instead (matches the buttons already used by `/search`). Panel-to-role mappings are stored per-message in `reaction-roles.json` (not committed to git), so panels keep working across bot restarts.
+
 ---
 
 ## Setup

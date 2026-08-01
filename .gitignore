@@ -1,6 +1,8 @@
 **.env
 **node_modules
 audit.log
+welcome-config.json
+reaction-roles.json
 __pycache__/
 *.pyc
 *.pyo
