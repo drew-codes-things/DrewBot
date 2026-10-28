@@ -14,7 +14,7 @@
 
 ## Overview
 
-DrewBot is a single-file Discord bot built with discord.js v14. All commands are registered as global slash commands on startup. The bot uses TMDB to power a paginated movie and TV search, scrapes Reddit's public Atom RSS feed to deliver random image memes, and provides a complete moderation toolkit - all from `index.js` with no external command loader or framework.
+DrewBot is a single-file Discord bot built with discord.js v14. All commands are registered as global slash commands on startup. The bot uses TMDB to power a paginated movie and TV search, delivers random image memes from RedditDownloaderV4's Discord relay or Reddit's public Atom RSS feed, and provides a complete moderation toolkit - all from `index.js` with no external command loader or framework.
 
 ---
 
@@ -28,7 +28,7 @@ DrewBot is a single-file Discord bot built with discord.js v14. All commands are
 | `/help` | Lists all commands grouped by category |
 | `/serverinfo` | Shows server name, member count (humans vs bots), owner, channel count, role count, and creation date |
 | `/profile [user]` | Shows a user's avatar, account creation date, server join date, nickname, and roles. Defaults to yourself if no user is provided |
-| `/meme` | Fetches a random image post from r/memes via RSS. Parses Atom `<content>` HTML to resolve the best quality image from `i.redd.it`, `preview.redd.it`, or `media:thumbnail` |
+| `/meme` | Posts a random r/memes image from the Discord relay (RedditDownloaderV4's Devvit app) when one is set up, otherwise from r/memes via RSS. Parses Atom `<content>` HTML to resolve the best quality image from `i.redd.it`, `preview.redd.it`, or `media:thumbnail` |
 | `/search <title> <type>` | Searches TMDB for a movie or TV show. Results are paginated with Previous/Next buttons. Fetches up to 3 pages of TMDB results. Session expires after 5 minutes |
 
 ### Moderation
@@ -124,6 +124,17 @@ The `/meme` command fetches `https://www.reddit.com/r/memes/.rss?limit=25` as ra
 | Direct image URL (any host) | 0 |
 
 `preview.redd.it` URLs are rewritten to their `i.redd.it` originals before posting. If no valid image is found in the content block, the entry's `<media:thumbnail>` is used as a fallback (placeholder values like `self`, `default`, `nsfw` are ignored).
+
+### Discord relay
+
+Reddit's RSS can be throttled or shut off, so `/meme` can also use the relay [RedditDownloaderV4](https://github.com/drew-codes-things/RedditDownloaderV4) uses. Its Devvit app runs inside Reddit and can only reach `discord.com`, so it posts `RELAY:` batches of media links to a Discord webhook. DrewBot is already in the server, so it reads that channel itself - no discord-poller needed, only the webhook.
+
+1. Set up the Devvit app and its webhook as in RedditDownloaderV4's README, pointing the webhook at a channel DrewBot can read
+2. In the [Developer Portal](https://discord.com/developers/applications), DrewBot's Bot tab: enable **Message Content Intent** (without it the relay messages arrive empty)
+3. Set `RELAY_CHANNEL_ID`, and optionally `RELAY_WEBHOOK_ID` (the `{id}` in the webhook URL) so only that webhook is trusted
+4. In Reddit, run **[starbottyyay] Fetch Media to Server** on r/memes
+
+On startup DrewBot loads the channel's last 100 messages, then picks up new batches as they arrive, keeping up to 500 image posts in memory. Messages typed by people or other bots are ignored. If the relay has no r/memes images yet, `/meme` falls back to RSS.
 
 ---
 

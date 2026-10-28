@@ -25,6 +25,8 @@ const config = {
     clientId: process.env.CLIENT_ID,
     guildId: process.env.GUILD_ID || null,
     tmdbApiKey: process.env.TMDB_API_KEY,
+    relayChannelId: (process.env.RELAY_CHANNEL_ID || '').trim(),
+    relayWebhookId: (process.env.RELAY_WEBHOOK_ID || '').trim(),
     tmdbBase: 'https://api.themoviedb.org/3',
     status: 'Watching over the server',
     color: 0x40E0D0,
@@ -111,8 +113,6 @@ function buildReactionRoleRows(roles) {
     return rows;
 }
 
-// A moderator may only act on members ranked below them; the server owner may act on anyone.
-// Without this, anyone with e.g. Ban Members could use the bot to ban an admin above them.
 function moderatorOutranks(interaction, target) {
     if (interaction.guild.ownerId === interaction.user.id) return true;
     if (target.id === interaction.guild.ownerId) return false;
@@ -328,6 +328,64 @@ function extractImageFromContent(rawContent) {
     return previewToOriginal(best);
 }
 
+const RELAY_MESSAGE_PREFIX = 'RELAY:';
+const RELAY_POOL_LIMIT = 500;
+const relayPool = new Map();
+
+function isImageUrl(url) {
+    try {
+        const pathname = new URL(url).pathname.toLowerCase();
+        return IMAGE_EXTENSIONS.some(ext => pathname.endsWith(ext));
+    } catch (_) {
+        return false;
+    }
+}
+
+function addRelayMessage(message) {
+    if (!config.relayChannelId || message.channelId !== config.relayChannelId) return 0;
+    const content = message.content || '';
+    if (!content.startsWith(RELAY_MESSAGE_PREFIX)) return 0;
+    if (!message.webhookId || (config.relayWebhookId && message.webhookId !== config.relayWebhookId)) {
+        logEvent('warn', 'relay_ignored', { messageId: message.id, reason: 'not sent by the relay webhook' });
+        return 0;
+    }
+    let items;
+    try {
+        items = JSON.parse(content.slice(RELAY_MESSAGE_PREFIX.length));
+    } catch (_) {
+        logEvent('warn', 'relay_ignored', { messageId: message.id, reason: 'invalid JSON' });
+        return 0;
+    }
+    if (!Array.isArray(items)) return 0;
+    let added = 0;
+    for (const item of items) {
+        if (!item || typeof item.url !== 'string' || !item.postId || !isImageUrl(item.url)) continue;
+        const postId = String(item.postId).replace(/^t3_/, '');
+        if (relayPool.has(postId)) continue;
+        relayPool.set(postId, { postId, url: item.url, subreddit: String(item.subreddit || '') });
+        added++;
+        if (relayPool.size > RELAY_POOL_LIMIT) relayPool.delete(relayPool.keys().next().value);
+    }
+    return added;
+}
+
+async function loadRelayHistory() {
+    if (!config.relayChannelId) return;
+    try {
+        const channel = await client.channels.fetch(config.relayChannelId);
+        const messages = await channel.messages.fetch({ limit: 100 });
+        let added = 0;
+        for (const message of [...messages.values()].reverse()) added += addRelayMessage(message);
+        logEvent('info', 'relay_loaded', { images: added });
+    } catch (err) {
+        logEvent('error', 'relay_load_failed', { error: err.message });
+    }
+}
+
+function relayMemes(subreddit) {
+    return [...relayPool.values()].filter(item => item.subreddit.toLowerCase() === subreddit);
+}
+
 async function fetchSubredditRss(subreddit) {
     const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/.rss?limit=25`;
     const res = await axios.get(url, {
@@ -432,12 +490,14 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildModeration,
         GatewayIntentBits.GuildPresences,
+        ...(config.relayChannelId ? [GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] : []),
     ],
 });
 
 client.once(Events.ClientReady, async () => {
     logEvent('info', 'online', { tag: client.user.tag });
     client.user.setActivity(config.status, { type: ActivityType.Watching });
+    loadRelayHistory();
     try {
         const rest = new REST({ version: '10' }).setToken(config.token);
         const route = config.guildId
@@ -452,7 +512,6 @@ client.once(Events.ClientReady, async () => {
         logEvent('error', 'command_registration_failed', { error: err.message });
     }
 });
-
 
 async function handlePing(interaction) {
     await interaction.reply(`Pong! API latency: ${client.ws.ping}ms`);
@@ -513,6 +572,15 @@ async function handleProfile(interaction) {
 
 async function handleMeme(interaction) {
     await interaction.deferReply();
+    const relayed = relayMemes('memes');
+    if (relayed.length) {
+        const pick = relayed[Math.floor(Math.random() * relayed.length)];
+        const e = embed('r/memes')
+            .setImage(pick.url)
+            .setDescription(`[View on Reddit](https://www.reddit.com/comments/${pick.postId})`)
+            .setFooter({ text: 'r/memes via the Discord relay' });
+        return interaction.editReply({ embeds: [e] });
+    }
     try {
         const entries = await fetchSubredditRss('memes');
         const imageEntries = entries.filter(e => e.imageUrl);
@@ -531,7 +599,7 @@ async function handleMeme(interaction) {
         await interaction.editReply({ embeds: [e] });
     } catch (err) {
         console.error('[meme][error]', err.message);
-        await interaction.editReply('Failed to fetch a meme. Reddit\'s RSS might be down.');
+        await interaction.editReply('Failed to fetch a meme. Reddit\'s RSS might be down, and the Discord relay has no r/memes images yet.');
     }
 }
 
@@ -773,7 +841,6 @@ async function handleEmbedEdit(interaction) {
     }
 }
 
-
 async function handleWelcomeChannel(interaction) {
     const channel = interaction.options.getChannel('channel');
     try {
@@ -903,6 +970,11 @@ const HANDLERS = {
     reactionroleadd: handleReactionRoleAdd,
     reactionroleremove: handleReactionRoleRemove,
 };
+
+client.on(Events.MessageCreate, message => {
+    const added = addRelayMessage(message);
+    if (added) logEvent('info', 'relay_received', { images: added });
+});
 
 client.on('guildMemberAdd', async member => {
     const channelId = loadWelcomeConfig()[member.guild.id];
