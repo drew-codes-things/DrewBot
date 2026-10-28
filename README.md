@@ -33,7 +33,7 @@ DrewBot is a single-file Discord bot built with discord.js v14. All commands are
 
 ### Moderation
 
-All moderation commands require the matching Discord permission on the invoking user.
+All moderation commands require the matching Discord permission on the invoking user, and `/ban`, `/kick`, `/mute`, `/unmute`, `/restrict` and `/unrestrict` only work on members whose highest role is below the moderator's (the server owner can act on anyone). Commands only work inside a server, not in DMs.
 
 | Command | Permission required | Description |
 |---|---|---|

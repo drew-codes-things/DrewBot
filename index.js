@@ -1,8 +1,11 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config({ path: path.join(__dirname, '.env'), quiet: true });
 const {
+    ActivityType,
     Client,
+    Events,
     GatewayIntentBits,
+    InteractionContextType,
     REST,
     Routes,
     SlashCommandBuilder,
@@ -107,6 +110,16 @@ function buildReactionRoleRows(roles) {
     }
     return rows;
 }
+
+// A moderator may only act on members ranked below them; the server owner may act on anyone.
+// Without this, anyone with e.g. Ban Members could use the bot to ban an admin above them.
+function moderatorOutranks(interaction, target) {
+    if (interaction.guild.ownerId === interaction.user.id) return true;
+    if (target.id === interaction.guild.ownerId) return false;
+    return interaction.member.roles.highest.position > target.roles.highest.position;
+}
+
+const OUTRANKED_MESSAGE = 'You can only use this on members whose highest role is below yours.';
 
 function botCanAssignRole(guild, role) {
     if (role.id === guild.id) return false;
@@ -256,7 +269,7 @@ const commands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
         .addStringOption(o => o.setName('messagelink').setDescription('Link to the panel message').setRequired(true))
         .addRoleOption(o => o.setName('role').setDescription('Role to remove').setRequired(true)),
-].map(c => c.toJSON());
+].map(c => c.setContexts(InteractionContextType.Guild).toJSON());
 
 const embed = (title) =>
     new EmbedBuilder().setColor(config.color).setTitle(title).setTimestamp();
@@ -422,9 +435,9 @@ const client = new Client({
     ],
 });
 
-client.once('ready', async () => {
+client.once(Events.ClientReady, async () => {
     logEvent('info', 'online', { tag: client.user.tag });
-    client.user.setActivity(config.status, { type: 3 });
+    client.user.setActivity(config.status, { type: ActivityType.Watching });
     try {
         const rest = new REST({ version: '10' }).setToken(config.token);
         const route = config.guildId
@@ -465,7 +478,7 @@ async function handleServerInfo(interaction) {
         const humans = Math.max(guild.memberCount - bots, 0);
 
         const e = embed(`${guild.name}`)
-            .setThumbnail(guild.iconURL({ dynamic: true, size: 512 }))
+            .setThumbnail(guild.iconURL({ size: 512 }))
             .setDescription(guild.description || '')
             .addFields(
                 { name: 'Members', value: `${humans} humans - ${bots} bots`, inline: true },
@@ -487,7 +500,7 @@ async function handleProfile(interaction) {
     const user = interaction.options.getUser('user') || interaction.user;
     const guildMember = await guild.members.fetch(user.id).catch(() => null);
     const e = embed(`${user.username}'s Profile`)
-        .setThumbnail(user.displayAvatarURL({ dynamic: true, size: 512 }))
+        .setThumbnail(user.displayAvatarURL({ size: 512 }))
         .addFields(
             { name: 'ID', value: user.id, inline: true },
             { name: 'Account created', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true },
@@ -582,6 +595,7 @@ async function handleBan(interaction) {
     const user = interaction.options.getUser('user');
     const reason = interaction.options.getString('reason') || 'No reason provided';
     const gm = await guild.members.fetch(user.id).catch(() => null);
+    if (gm && !moderatorOutranks(interaction, gm)) return interaction.reply(ephemeral(OUTRANKED_MESSAGE));
     if (gm && !gm.bannable) {
         return interaction.reply(ephemeral('I cannot ban that user. They may have a higher role than me or be a server admin.'));
     }
@@ -611,7 +625,9 @@ async function handleKick(interaction) {
     const user = interaction.options.getUser('user');
     const reason = interaction.options.getString('reason') || 'No reason provided';
     const gm = await guild.members.fetch(user.id).catch(() => null);
-    if (!gm?.kickable) return interaction.reply(ephemeral('I cannot kick that user.'));
+    if (!gm) return interaction.reply(ephemeral('Could not find that member.'));
+    if (!moderatorOutranks(interaction, gm)) return interaction.reply(ephemeral(OUTRANKED_MESSAGE));
+    if (!gm.kickable) return interaction.reply(ephemeral('I cannot kick that user.'));
     try {
         await gm.kick(reason);
         await interaction.reply(`Kicked **${user.tag}**. Reason: ${reason}`);
@@ -627,6 +643,7 @@ async function handleMute(interaction) {
     const minutes = interaction.options.getInteger('minutes') || 10;
     const gm = await guild.members.fetch(user.id).catch(() => null);
     if (!gm) return interaction.reply(ephemeral('Could not find that member.'));
+    if (!moderatorOutranks(interaction, gm)) return interaction.reply(ephemeral(OUTRANKED_MESSAGE));
     try {
         await gm.timeout(minutes * 60 * 1000, `Timed out by ${interaction.user.tag}`);
         await interaction.reply(`Timed out **${user.tag}** for ${minutes} minute(s).`);
@@ -641,6 +658,7 @@ async function handleUnmute(interaction) {
     const user = interaction.options.getUser('user');
     const gm = await guild.members.fetch(user.id).catch(() => null);
     if (!gm) return interaction.reply(ephemeral('Could not find that member.'));
+    if (!moderatorOutranks(interaction, gm)) return interaction.reply(ephemeral(OUTRANKED_MESSAGE));
     try {
         await gm.timeout(null);
         await interaction.reply(`Removed timeout from **${user.tag}**.`);
@@ -655,6 +673,7 @@ async function handleRestrict(interaction) {
     const user = interaction.options.getUser('user');
     const gm = await guild.members.fetch(user.id).catch(() => null);
     if (!gm) return interaction.reply(ephemeral('Could not find that member.'));
+    if (!moderatorOutranks(interaction, gm)) return interaction.reply(ephemeral(OUTRANKED_MESSAGE));
     try {
         await interaction.channel.permissionOverwrites.edit(gm, { SendMessages: false });
         await interaction.reply(`Restricted **${user.tag}** from sending messages in this channel.`);
@@ -669,6 +688,7 @@ async function handleUnrestrict(interaction) {
     const user = interaction.options.getUser('user');
     const gm = await guild.members.fetch(user.id).catch(() => null);
     if (!gm) return interaction.reply(ephemeral('Could not find that member.'));
+    if (!moderatorOutranks(interaction, gm)) return interaction.reply(ephemeral(OUTRANKED_MESSAGE));
     try {
         await interaction.channel.permissionOverwrites.edit(gm, { SendMessages: null });
         await interaction.reply(`Removed channel restriction from **${user.tag}**.`);
@@ -892,7 +912,7 @@ client.on('guildMemberAdd', async member => {
         if (!channel?.isTextBased()) return;
         const e = embed('Welcome!')
             .setDescription(`${member} just joined **${member.guild.name}**. Welcome aboard!`)
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }));
+            .setThumbnail(member.user.displayAvatarURL({ size: 512 }));
         await channel.send({ embeds: [e] });
     } catch (err) {
         console.error('[welcome][error]', err.message);
