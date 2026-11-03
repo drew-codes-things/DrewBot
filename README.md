@@ -25,6 +25,7 @@ DrewBot is a single-file Discord bot built with discord.js v14. All commands are
 | Command | Description |
 |---|---|
 | `/ping` | Returns current API websocket latency in ms |
+| `/status` | Uptime, latency, server count, bot and discord.js versions, memory use and whether the meme relay is set up |
 | `/help` | Lists all commands grouped by category |
 | `/serverinfo` | Shows server name, member count (humans vs bots), owner, channel count, role count, and creation date |
 | `/profile [user]` | Shows a user's avatar, account creation date, server join date, nickname, and roles. Defaults to yourself if no user is provided |

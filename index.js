@@ -158,6 +158,7 @@ const commands = [
 
     new SlashCommandBuilder().setName('help').setDescription('List all available commands'),
     new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
+    new SlashCommandBuilder().setName('status').setDescription('Uptime, version and health of the bot'),
     new SlashCommandBuilder().setName('serverinfo').setDescription('Display server information'),
     new SlashCommandBuilder().setName('meme').setDescription('Get a random meme from r/memes'),
 
@@ -517,11 +518,37 @@ async function handlePing(interaction) {
     await interaction.reply(`Pong! API latency: ${client.ws.ping}ms`);
 }
 
+function formatUptime(totalSeconds) {
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return [days && `${days}d`, (days || hours) && `${hours}h`, `${minutes}m`].filter(Boolean).join(' ');
+}
+
+async function handleStatus(interaction) {
+    const { version } = require('./package.json');
+    const discordVersion = require('discord.js').version;
+    const memoryMb = Math.round(process.memoryUsage().rss / (1024 * 1024));
+    const relay = config.relayChannelId
+        ? `${relayPool.size} images cached`
+        : 'not set up (memes come from RSS)';
+    const e = embed('DrewBot - Status').addFields(
+        { name: 'Uptime', value: formatUptime(Math.floor(process.uptime())), inline: true },
+        { name: 'Latency', value: `${client.ws.ping}ms`, inline: true },
+        { name: 'Servers', value: String(client.guilds.cache.size), inline: true },
+        { name: 'Version', value: `DrewBot ${version}`, inline: true },
+        { name: 'Runtime', value: `Node ${process.versions.node}, discord.js ${discordVersion}`, inline: true },
+        { name: 'Memory', value: `${memoryMb} MB`, inline: true },
+        { name: 'Meme relay', value: relay },
+    );
+    await interaction.reply({ embeds: [e] });
+}
+
 async function handleHelp(interaction) {
     const e = embed('DrewBot - Commands')
         .setDescription('All available slash commands:')
         .addFields(
-            { name: 'General', value: '`/ping` `/help` `/search` `/profile` `/serverinfo` `/meme`' },
+            { name: 'General', value: '`/ping` `/status` `/help` `/search` `/profile` `/serverinfo` `/meme`' },
             { name: 'Moderation', value: '`/ban` `/unban` `/kick` `/mute` `/unmute` `/restrict` `/unrestrict` `/purge` `/massunban`' },
             { name: 'Embeds', value: '`/embedcreate` `/embededit`' },
             { name: 'Welcome', value: '`/welcomechannel`' },
@@ -949,6 +976,7 @@ async function handleReactionRoleButton(interaction) {
 
 const HANDLERS = {
     ping: handlePing,
+    status: handleStatus,
     help: handleHelp,
     serverinfo: handleServerInfo,
     profile: handleProfile,
