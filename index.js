@@ -490,9 +490,12 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildPresences,
         ...(config.relayChannelId ? [GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] : []),
     ],
+});
+
+process.on('unhandledRejection', err => {
+    logEvent('error', 'unhandled_rejection', { error: err?.message || String(err) });
 });
 
 client.once(Events.ClientReady, async () => {
@@ -661,7 +664,7 @@ async function handleSearch(interaction) {
             time: 300000,
         });
         collector.on('collect', async i => {
-            idx = i.customId === 'next' ? idx + 1 : idx - 1;
+            idx = Math.min(Math.max(i.customId === 'next' ? idx + 1 : idx - 1, 0), results.length - 1);
             await i.update({
                 embeds: [buildSearchEmbed(results[idx], idx, results.length, type)],
                 components: [navRow(idx, results.length)],
@@ -705,7 +708,10 @@ async function handleBan(interaction) {
 
 async function handleUnban(interaction) {
     const { guild } = interaction;
-    const userId = interaction.options.getString('userid');
+    const userId = interaction.options.getString('userid').trim();
+    if (!/^\d{17,20}$/.test(userId)) {
+        return interaction.reply(ephemeral('That is not a valid user ID. Enable Developer Mode in Discord, right-click the user and choose Copy User ID.'));
+    }
     try {
         await guild.members.unban(userId);
         await interaction.reply(`Unbanned user ID \`${userId}\`.`);
