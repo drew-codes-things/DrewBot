@@ -128,12 +128,21 @@ function botCanAssignRole(guild, role) {
     return Boolean(botMember && botMember.roles.highest.position > role.position);
 }
 
+function moderatorCanManageRole(interaction, role) {
+    if (interaction.guild.ownerId === interaction.user.id) return true;
+    return interaction.member.roles.highest.position > role.position;
+}
+
+function singleLine(text) {
+    return text.replace(/\s+/g, ' ');
+}
+
 function auditLog(interaction) {
     let target = '';
     const user = interaction.options.getUser('user');
     const userId = interaction.options.getString('userid');
     if (user) target = ` target=${user.tag}(${user.id})`;
-    else if (userId) target = ` target=${userId}`;
+    else if (userId) target = ` target=${singleLine(userId)}`;
     const line = `[${new Date().toISOString()}] guild=${interaction.guildId || 'DM'} `
         + `user=${interaction.user.tag}(${interaction.user.id}) command=/${interaction.commandName}${target}`;
     logEvent('audit', 'moderation', {
@@ -908,6 +917,10 @@ async function handleReactionRoleAdd(interaction) {
     const role = interaction.options.getRole('role');
     if (!botCanAssignRole(interaction.guild, role)) {
         return interaction.reply(ephemeral('I cannot assign that role. It may be @everyone, a managed integration role, or higher than my own highest role.'));
+    }
+
+    if (!moderatorCanManageRole(interaction, role)) {
+        return interaction.reply(ephemeral('You can only add roles that are below your own highest role.'));
     }
 
     const store = loadReactionRoles();
