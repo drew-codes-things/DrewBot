@@ -58,12 +58,14 @@ function checkCooldown(userId, command) {
     return 0;
 }
 
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, last] of cooldowns) {
-        if (now - last >= COOLDOWN_MS) cooldowns.delete(key);
-    }
-}, COOLDOWN_MS);
+function startCooldownSweep() {
+    setInterval(() => {
+        const now = Date.now();
+        for (const [key, last] of cooldowns) {
+            if (now - last >= COOLDOWN_MS) cooldowns.delete(key);
+        }
+    }, COOLDOWN_MS);
+}
 
 const WELCOME_CONFIG_PATH = path.join(__dirname, 'welcome-config.json');
 
@@ -501,10 +503,6 @@ const client = new Client({
         GatewayIntentBits.GuildModeration,
         ...(config.relayChannelId ? [GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] : []),
     ],
-});
-
-process.on('unhandledRejection', err => {
-    logEvent('error', 'unhandled_rejection', { error: err?.message || String(err) });
 });
 
 client.once(Events.ClientReady, async () => {
@@ -1066,12 +1064,32 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-if (!config.token || !config.clientId) {
-    console.error(`[BOT][error] Missing DISCORD_TOKEN/CLIENT_ID. Set them in ${path.join(__dirname, '.env')}`);
-    process.exit(1);
+function startBot() {
+    if (!config.token || !config.clientId) {
+        console.error(`[BOT][error] Missing DISCORD_TOKEN/CLIENT_ID. Set them in ${path.join(__dirname, '.env')}`);
+        process.exit(1);
+    }
+
+    process.on('unhandledRejection', err => {
+        logEvent('error', 'unhandled_rejection', { error: err?.message || String(err) });
+    });
+    startCooldownSweep();
+
+    client.login(config.token).catch(err => {
+        console.error('[BOT][error] Login failed:', err.message);
+        process.exit(1);
+    });
 }
 
-client.login(config.token).catch(err => {
-    console.error('[BOT][error] Login failed:', err.message);
-    process.exit(1);
-});
+if (require.main === module) startBot();
+
+module.exports = {
+    moderatorOutranks,
+    botCanAssignRole,
+    moderatorCanManageRole,
+    parseDiscordMessageLink,
+    addRelayMessage,
+    extractImageFromContent,
+    checkCooldown,
+    HANDLERS,
+};
