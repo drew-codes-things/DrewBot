@@ -135,6 +135,47 @@ function moderatorCanManageRole(interaction, role) {
     return interaction.member.roles.highest.position > role.position;
 }
 
+function sendPermissionFor(channel) {
+    return channel.isThread?.() ? PermissionFlagsBits.SendMessagesInThreads : PermissionFlagsBits.SendMessages;
+}
+
+function memberPermissionsIn(channel, member) {
+    if (typeof channel?.permissionsFor !== 'function') return null;
+    return channel.permissionsFor(member);
+}
+
+function memberCanSeeChannel(channel, member, permissions) {
+    if (!permissions.has(PermissionFlagsBits.ViewChannel)) return false;
+    if (channel.type !== ChannelType.PrivateThread) return true;
+    return permissions.has(PermissionFlagsBits.ManageThreads) || Boolean(channel.members?.cache?.has(member.id));
+}
+
+function memberCanPostEmbedsIn(channel, member) {
+    const permissions = memberPermissionsIn(channel, member);
+    if (!permissions || !memberCanSeeChannel(channel, member, permissions)) return false;
+    return permissions.has([sendPermissionFor(channel), PermissionFlagsBits.EmbedLinks]);
+}
+
+function memberCanEditBotMessagesIn(channel, member) {
+    const permissions = memberPermissionsIn(channel, member);
+    if (!permissions || !memberCanSeeChannel(channel, member, permissions)) return false;
+    return permissions.has(PermissionFlagsBits.ManageMessages) || permissions.has(sendPermissionFor(channel));
+}
+
+function isOwnMessage(message, botUserId) {
+    return Boolean(botUserId) && message.author?.id === botUserId;
+}
+
+function cannotPostMessage(channel) {
+    return `You need View Channel, Send Messages and Embed Links in <#${channel.id}> to do that.`;
+}
+
+function cannotEditMessage(channel) {
+    return `You need View Channel, plus Send Messages or Manage Messages, in <#${channel.id}> to do that.`;
+}
+
+const NOT_OWN_MESSAGE = 'I can only edit embeds I posted.';
+
 function singleLine(text) {
     return text.replace(/\s+/g, ' ');
 }
@@ -848,6 +889,7 @@ async function handleMassUnban(interaction) {
 
 async function handleEmbedCreate(interaction) {
     const channel = interaction.options.getChannel('channel');
+    if (!memberCanPostEmbedsIn(channel, interaction.member)) return interaction.reply(ephemeral(cannotPostMessage(channel)));
     const e = embed(interaction.options.getString('title')).setDescription(interaction.options.getString('description'));
     try {
         await channel.send({ embeds: [e] });
@@ -867,7 +909,9 @@ async function handleEmbedEdit(interaction) {
     const { channelId, messageId } = parsed;
     try {
         const ch = await interaction.guild.channels.fetch(channelId);
+        if (!memberCanEditBotMessagesIn(ch, interaction.member)) return interaction.reply(ephemeral(cannotEditMessage(ch)));
         const msg = await ch.messages.fetch(messageId);
+        if (!isOwnMessage(msg, interaction.client.user?.id)) return interaction.reply(ephemeral(NOT_OWN_MESSAGE));
         if (!msg.embeds[0]) return interaction.reply(ephemeral('No embed on that message.'));
         const orig = msg.embeds[0];
         const e = new EmbedBuilder(orig.data)
@@ -883,6 +927,7 @@ async function handleEmbedEdit(interaction) {
 
 async function handleWelcomeChannel(interaction) {
     const channel = interaction.options.getChannel('channel');
+    if (!memberCanPostEmbedsIn(channel, interaction.member)) return interaction.reply(ephemeral(cannotPostMessage(channel)));
     try {
         setWelcomeChannel(interaction.guildId, channel.id);
         await interaction.reply(ephemeral(`Welcome messages will now be posted in ${channel}.`));
@@ -896,6 +941,7 @@ async function handleReactionRoleCreate(interaction) {
     const channel = interaction.options.getChannel('channel');
     const title = interaction.options.getString('title');
     const description = interaction.options.getString('description');
+    if (!memberCanPostEmbedsIn(channel, interaction.member)) return interaction.reply(ephemeral(cannotPostMessage(channel)));
     try {
         const message = await channel.send({ embeds: [embed(title).setDescription(description)] });
         const store = loadReactionRoles();
@@ -931,7 +977,9 @@ async function handleReactionRoleAdd(interaction) {
 
     try {
         const channel = await interaction.guild.channels.fetch(panel.channelId);
+        if (!memberCanEditBotMessagesIn(channel, interaction.member)) return interaction.reply(ephemeral(cannotEditMessage(channel)));
         const message = await channel.messages.fetch(parsed.messageId);
+        if (!isOwnMessage(message, interaction.client.user?.id)) return interaction.reply(ephemeral(NOT_OWN_MESSAGE));
         panel.roles[role.id] = interaction.options.getString('label');
         await message.edit({ components: buildReactionRoleRows(panel.roles) });
         saveReactionRoles(store);
@@ -953,7 +1001,9 @@ async function handleReactionRoleRemove(interaction) {
 
     try {
         const channel = await interaction.guild.channels.fetch(panel.channelId);
+        if (!memberCanEditBotMessagesIn(channel, interaction.member)) return interaction.reply(ephemeral(cannotEditMessage(channel)));
         const message = await channel.messages.fetch(parsed.messageId);
+        if (!isOwnMessage(message, interaction.client.user?.id)) return interaction.reply(ephemeral(NOT_OWN_MESSAGE));
         delete panel.roles[role.id];
         await message.edit({ components: buildReactionRoleRows(panel.roles) });
         saveReactionRoles(store);

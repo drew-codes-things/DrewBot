@@ -55,6 +55,8 @@ All moderation commands require the matching Discord permission on the invoking 
 | `/embedcreate <channel> <title> <description>` | Manage Messages | Sends a new embed to the specified channel |
 | `/embededit <messagelink> [title] [description]` | Manage Messages | Edits an existing bot embed by Discord message link. Validates the link domain before fetching |
 
+These commands also check your access to the channel they act on, not only the channel you type in. `/embedcreate`, `/welcomechannel` and `/reactionrolecreate` need View Channel, Send Messages (Send Messages in Threads for a thread) and Embed Links in the target channel. `/embededit`, `/reactionroleadd` and `/reactionroleremove` only change messages DrewBot posted, and need View Channel plus Send Messages or Manage Messages where that message is. A private thread also needs you to be in it or to have Manage Threads.
+
 ### Welcome
 
 | Command | Permission required | Description |
