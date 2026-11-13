@@ -82,8 +82,10 @@ Members click a role's button to receive it, and click it again to remove it - a
 ### 1. Install dependencies
 
 ```bash
-npm install
+npm ci
 ```
+
+`npm ci` installs the exact versions in `package-lock.json`. Use `npm install` only when changing dependencies, and commit the updated lockfile.
 
 Requires: `discord.js`, `axios`, `dotenv`
 
