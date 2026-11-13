@@ -111,6 +111,14 @@ Slash commands are registered on startup. By default they register **globally** 
 
 Every moderation command (`/ban`, `/kick`, `/mute`, `/purge`, etc.) is recorded to `audit.log` (and the console) with a timestamp, the invoking user, the guild, and the target. A per-user per-command cooldown (`COOLDOWN_SECONDS`, default 3s) throttles spam. Set `LOG_JSON=true` to emit structured JSON logs (lifecycle, command registration, audit, errors) to stdout.
 
+### 4. Test
+
+```bash
+npm test
+```
+
+The tests use Node's built-in runner with Discord mocked out, so they need no token and never contact Discord. Loading `index.js` from a test does not start the bot; only `node index.js` does.
+
 ---
 
 ## How the Meme Command Works
